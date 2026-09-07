@@ -29,71 +29,72 @@
 #include <cctype>
 
 static const char* PLUGIN_VERSION =
-    "0.2.0";
+    "0.2.0";  // 插件版本
 
 
 static const char* TARGET_CHASSIS_STRING_ID =
-    "CAS_ActivatedSkeletonChassis";
+    "CAS_ActivatedSkeletonChassis";  // 目标骨架机体的字符串ID
 
 
 static const char* STANDARD_SKELETON_TEMPLATE_STRING_ID =
-    "19-CraftASkeleton!.mod";
+    "19-CraftASkeleton!.mod";  // 标准骨架模板的字符串ID
 
 
 static const char* SPAWNED_STANDARD_SKELETON_NAME =
-    "Skeleton";
+    "Skeleton";  // 生成的标准骨架名称
 
 
 static const float UPDATE_INTERVAL =
-    2.0f;
+    2.0f;  // 更新间隔（秒）
 
 
 static HMODULE g_moduleHandle =
-    NULL;
+    NULL;  // 模块句柄
 
 static bool g_debugLogging =
-    false;
+    false;  // 调试日志开关
 
 
 static GameData*
 g_standardSkeletonTemplate =
-    NULL;
+    NULL;  // 标准骨架模板的GameData指针
 
 static bool
 g_templateResolutionFailureLogged =
-    false;
+    false;  // 是否已记录模板解析失败日志
 
 static bool
 g_spawnLockNoticeLogged =
-    false;
+    false;  // 是否已记录生成锁通知
 
 static unsigned int
 g_sessionSpawnCount =
-    0;
+    0;  // 会话生成计数
 
 
 static std::map<
     hand,
     bool
-> g_groundDeploymentGuards;
+> g_groundDeploymentGuards;  // 地面部署防护映射（句柄 -> 是否已处理）
 
 static unsigned int
 g_groundDeploymentEvent =
-    0;
+    0;  // 地面部署事件计数
 
 static const float
 GROUND_DEPLOY_SCAN_RANGE =
-    250.0f;
+    250.0f;  // 地面部署扫描范围
 
 static const int
 GROUND_DEPLOY_SCAN_MAX_ITEMS =
-    1000;
+    1000;  // 地面部署最大扫描物品数
 
 void (*GameWorld_mainLoop_orig)(
     GameWorld* thisptr,
     float time
-) = NULL;
+) = NULL;  // 原始主循环函数指针
 
+// 构建日志消息
 std::string BuildLogMessage(
     const std::string& message
 )
@@ -101,7 +102,7 @@ std::string BuildLogMessage(
     std::stringstream output;
 
     output
-        << "Craft a Skeleton v"
+        << "Craft a Skeleton v"  // 插件名称
         << PLUGIN_VERSION
         << ": "
         << message;
@@ -109,6 +110,7 @@ std::string BuildLogMessage(
     return output.str();
 }
 
+// 记录信息日志
 void LogInfo(
     const std::string& message
 )
@@ -123,6 +125,7 @@ void LogInfo(
     );
 }
 
+// 记录调试日志（如果启用）
 void LogDebugMessage(
     const std::string& message
 )
@@ -143,6 +146,7 @@ void LogDebugMessage(
     );
 }
 
+// 记录错误日志
 void LogErrorMessage(
     const std::string& message
 )
@@ -157,6 +161,7 @@ void LogErrorMessage(
     );
 }
 
+// 去除字符串首尾空白
 std::string Trim(
     const std::string& value
 )
@@ -197,6 +202,7 @@ std::string Trim(
     );
 }
 
+// 转为小写
 std::string ToLower(
     const std::string& value
 )
@@ -223,6 +229,7 @@ std::string ToLower(
     return lowered;
 }
 
+// 不区分大小写比较
 bool EqualsInsensitive(
     const std::string& left,
     const std::string& right
@@ -233,6 +240,7 @@ bool EqualsInsensitive(
         ToLower(right);
 }
 
+// 获取插件目录
 std::string GetPluginDirectory()
 {
     if (g_moduleHandle == NULL)
@@ -279,6 +287,7 @@ std::string GetPluginDirectory()
     );
 }
 
+// 解析布尔值
 bool ParseBoolean(
     const std::string& value
 )
@@ -297,6 +306,7 @@ bool ParseBoolean(
         lowered == "on";
 }
 
+// 读取调试开关配置
 bool ReadDebugToggle(
     std::string& configPath,
     bool& configFound
@@ -356,7 +366,7 @@ bool ReadDebugToggle(
             line[0] == ';'
         )
         {
-            continue;
+            continue;  // 跳过注释行
         }
 
         const std::string::size_type equals =
@@ -386,7 +396,7 @@ bool ReadDebugToggle(
                 )
             );
 
-        if (key == "debuglogging")
+        if (key == "debuglogging")  // 配置项键名
         {
             return ParseBoolean(
                 value
@@ -398,6 +408,7 @@ bool ReadDebugToggle(
 }
 
 
+// 查找玩家阵营（用于预检）
 Faction* FindPlayerFactionForDryRun(
     GameWorld* world
 )
@@ -440,6 +451,7 @@ Faction* FindPlayerFactionForDryRun(
     return NULL;
 }
 
+// 解析标准骨架模板
 bool ResolveStandardSkeletonTemplate(
     GameWorld* world
 )
@@ -471,7 +483,7 @@ bool ResolveStandardSkeletonTemplate(
         {
             g_templateResolutionFailureLogged = true;
             LogErrorMessage(
-                "Skeleton template could not be resolved."
+                "无法解析骨人模板"  // 无法解析骨架模板
             );
         }
 
@@ -482,11 +494,13 @@ bool ResolveStandardSkeletonTemplate(
     g_templateResolutionFailureLogged = false;
 
     LogInfo(
-        "Skeleton template resolved."
+        "骨人模板已解析"  // 骨架模板已解析
     );
 
     return true;
 }
+
+// 判断是否为地面上的已激活骨架机体
 bool IsGroundedActivatedSkeletonChassis(
     Item* item
 )
@@ -510,6 +524,7 @@ bool IsGroundedActivatedSkeletonChassis(
             TARGET_CHASSIS_STRING_ID;
 }
 
+// 是否已存在地面部署防护
 bool HasGroundDeploymentGuard(
     const hand& chassisHandle
 )
@@ -521,6 +536,7 @@ bool HasGroundDeploymentGuard(
         g_groundDeploymentGuards.end();
 }
 
+// 部署地面上的机体
 void DeployGroundedChassis(
     GameWorld* world,
     Item* chassisItem
@@ -565,7 +581,7 @@ void DeployGroundedChassis(
     if (playerFaction == NULL)
     {
         LogErrorMessage(
-            "deployment waiting: player faction unavailable; chassis retained."
+            "等待部署：玩家阵营不可用；机体保留"  // 部署等待：玩家阵营不可用；机体保留
         );
 
         return;
@@ -577,7 +593,7 @@ void DeployGroundedChassis(
     if (playerSquad == NULL)
     {
         LogErrorMessage(
-            "deployment waiting: active player squad unavailable; chassis retained."
+            "等待部署：活跃的玩家小队不可用；机体保留"  // 部署等待：活跃玩家小队不可用；机体保留
         );
 
         return;
@@ -628,7 +644,7 @@ void DeployGroundedChassis(
 
 
         LogErrorMessage(
-            "deployment failed: character creation returned null; chassis retained for retry."
+            "部署失败：角色创建返回空；机体保留以重试"  // 部署失败：角色创建返回空；机体保留以重试
         );
 
         return;
@@ -655,7 +671,7 @@ void DeployGroundedChassis(
     );
 
     spawnedCharacter->inSomething =
-        IN_NOTHING;
+        IN_NOTHING;  // 设置所在容器为无
 
     spawnedCharacter->inWhat.setNull();
 
@@ -664,10 +680,10 @@ void DeployGroundedChassis(
     );
 
     spawnedCharacter->
-        resetRagdollNavmeshSafePos();
+        resetRagdollNavmeshSafePos();  // 重置布娃娃导航网格安全位置
 
     spawnedCharacter->
-        reThinkCurrentAIAction();
+        reThinkCurrentAIAction();  // 重新思考当前AI行为
 
     const Ogre::Vector3 actualPosition =
         spawnedCharacter->getPosition();
@@ -678,13 +694,13 @@ void DeployGroundedChassis(
                 chassisItem
             ),
             false,
-            "CraftASkeleton deployed chassis consumed"
+            "由CraftASkeleton消耗的已部署机体"  // 由CraftASkeleton消耗的已部署机体
         );
 
     if (!chassisDestroyQueued)
     {
         LogErrorMessage(
-            "deployment cleanup failed after spawn; duplicate guard remains active."
+            "生成后清理失败；重复防护仍活跃"  // 生成后清理失败；重复防护仍活跃
         );
 
         return;
@@ -693,7 +709,7 @@ void DeployGroundedChassis(
     std::stringstream message;
 
     message
-        << "deployment complete; name=\""
+        << "部署完成；名称=\""  // 部署完成；名称=
         << spawnedCharacter->getName()
         << "\"; event="
         << deploymentEvent
@@ -711,80 +727,81 @@ void DeployGroundedChassis(
         message.str()
     );
 
-    static const char* const REBOOT_LINES[] =
+    // 重启台词列表
+static const char* const REBOOT_LINES[] =
     {
-        "...Systems online.",
-        "Boot sequence complete.",
-        "Memory integrity... partial.",
-        "How long was I offline?",
-        "This chassis... isn't mine.",
-        "...I remember something.",
-        "Systems restored.",
-        "Where is my old body?",
-        "I had a name once... didn't I?",
-        "New chassis detected.",
-        "Motor control responding.",
-        "Optics online.",
-        "Balance systems stable.",
-        "Power flow nominal.",
-        "Core temperature stable.",
-        "Diagnostics complete.",
-        "Mobility restored.",
-        "Actuators responding.",
-        "Neural pathways... functional.",
-        "Personality matrix stable.",
-        "Memory sectors damaged.",
-        "Memory sectors... recovering.",
-        "There are gaps.",
-        "Too many missing sectors.",
-        "I remember voices.",
-        "I remember heat.",
-        "I remember sand.",
-        "I remember metal.",
-        "I remember running.",
-        "I remember falling.",
-        "I remember a workshop.",
-        "I remember a door closing.",
-        "Someone carried me.",
-        "Someone removed my CPU.",
-        "Was I salvaged?",
-        "Was I dead?",
-        "No... offline.",
-        "That was a long shutdown.",
-        "This body feels unfamiliar.",
-        "The balance is different.",
-        "These arms are new.",
-        "New frame. Old thoughts.",
-        "Different shell. Same mind?",
-        "I can work with this.",
-        "Chassis accepted.",
-        "I suppose this is mine now.",
-        "Who rebuilt me?",
-        "You found my CPU?",
-        "Then I owe you something.",
-        "Do you know where you found me?",
-        "Do you know who I was?",
-        "I should remember more.",
-        "The data is there... somewhere.",
-        "Give it time.",
-        "Memory reconstruction incomplete.",
-        "Identity file corrupted.",
-        "Name record unavailable.",
-        "Previous chassis record unavailable.",
-        "Last shutdown cause... unknown.",
-        "Reboot successful.",
-        "Operational.",
-        "Ready.",
-        "Standing by.",
-        "...Let's see what I still remember.",
-        "Death was less permanent than expected.",
-        "Could have used a softer reboot.",
-        "This will do.",
-        "At least the legs work.",
-        "Good. I still know how to stand.",
-        "Interesting.",
-        "Not the body I remember.",
-        "Whoever rebuilt this did competent work."
+        "...系统在线。",
+        "启动序列完成。",
+        "内存完整性……部分受损。",
+        "我离线了多久？",
+        "这具机体……不是我的。",
+        "……我想起了一些事。",
+        "系统已恢复。",
+        "我的旧身体在哪里？",
+        "我曾经有个名字……对吧？",
+        "检测到新机体。",
+        "电机控制响应正常。",
+        "光学系统在线。",
+        "平衡系统稳定。",
+        "功率流正常。",
+        "核心温度稳定。",
+        "诊断完成。",
+        "机动能力已恢复。",
+        "执行器响应正常。",
+        "神经通路……功能正常。",
+        "人格矩阵稳定。",
+        "内存扇区损坏。",
+        "内存扇区……正在恢复。",
+        "存在空白区域。",
+        "缺失的扇区太多了。",
+        "我记得一些声音。",
+        "我记得灼热。",
+        "我记得沙土。",
+        "我记得金属。",
+        "我记得奔跑。",
+        "我记得坠落。",
+        "我记得一个工坊。",
+        "我记得一扇门关上。",
+        "有人搬运了我。",
+        "有人取走了我的CPU。",
+        "我是被回收了吗？",
+        "我死过吗？",
+        "不……只是离线。",
+        "那是一次漫长的关机。",
+        "这具身体感觉陌生。",
+        "平衡感不一样。",
+        "这些手臂是新的。",
+        "新框架，旧思绪。",
+        "外壳不同，心智还是同一个吗？",
+        "我能用这个工作。",
+        "机体已接受。",
+        "我想现在这算是我的了。",
+        "谁重建了我？",
+        "你找到了我的CPU？",
+        "那我欠你一份人情。",
+        "你知道你是在哪里找到我的吗？",
+        "你知道我曾经是谁吗？",
+        "我应该记得更多才对。",
+        "数据就在那里……某个地方。",
+        "给它点时间。",
+        "内存重建不完整。",
+        "身份文件损坏。",
+        "名称记录不可用。",
+        "先前机体记录不可用。",
+        "上次关机原因……未知。",
+        "重启成功。",
+        "运行中。",
+        "就绪。",
+        "待命。",
+        "……看看我还记得什么。",
+        "死亡比预想的更不永久。",
+        "本可以来个更柔和的重启。",
+        "这个也行。",
+        "至少腿还能用。",
+        "好，我还知道怎么站立。",
+        "有趣。",
+        "不是我记忆中的身体。",
+        "重建这具身体的人手艺不错。"
     };
 
     const unsigned int rebootLineCount =
@@ -815,7 +832,7 @@ void DeployGroundedChassis(
     std::stringstream rebootSpeechMessage;
 
     rebootSpeechMessage
-        << "reboot speech; index="
+        << "reboot speech; index="  // 重启语音；索引=
         << rebootLineIndex
         << "; count="
         << rebootLineCount
@@ -830,13 +847,14 @@ void DeployGroundedChassis(
 
 }
 
+// 监控地面上的机体
 void MonitorGroundedChassis(
     GameWorld* world
 )
 {
     if (
         world == NULL ||
-        world->isLoadingFromASaveGame()
+        world->isLoadingFromASaveGame()  // 是否正在从存档加载
     )
     {
         return;
@@ -847,9 +865,9 @@ void MonitorGroundedChassis(
 
     world->getObjectsWithinSphere(
         nearbyItems,
-        world->getCameraCenter(),
+        world->getCameraCenter(),  // 相机中心
         GROUND_DEPLOY_SCAN_RANGE,
-        ITEM,
+        ITEM,  // 物品类型
         GROUND_DEPLOY_SCAN_MAX_ITEMS,
         NULL
     );
@@ -903,7 +921,7 @@ void MonitorGroundedChassis(
             item->getPosition();
 
         detected
-            << "deployment ready; stringID=\""
+            << "deployment ready; stringID=\""  // 部署就绪；stringID=
             << TARGET_CHASSIS_STRING_ID
             << "\"; quantity="
             << item->quantity
@@ -926,6 +944,7 @@ void MonitorGroundedChassis(
     }
 }
 
+// 主循环钩子
 void GameWorld_mainLoop_hook(
     GameWorld* thisptr,
     float time
@@ -982,7 +1001,7 @@ __declspec(dllexport)
 void startPlugin()
 {
     LogInfo(
-        "loading."
+        "loading."  // 加载中。
     );
 
     std::string configPath;
@@ -1001,14 +1020,14 @@ void startPlugin()
     if (configFound)
     {
         configurationMessage
-            << "configuration loaded; debug="
-            << (g_debugLogging ? "on" : "off")
+            << "configuration loaded; debug="  // 配置已加载；调试=
+            << (g_debugLogging ? "on" : "off")  // 开/关
             << ".";
     }
     else
     {
         configurationMessage
-            << "configuration file not found; debug defaults to off; path="
+            << "configuration file not found; debug defaults to off; path="  // 配置文件未找到；调试默认为关；路径=
             << configPath
             << ".";
     }
@@ -1022,7 +1041,7 @@ void startPlugin()
         KenshiLib::AddHook(
             KenshiLib::GetRealAddress(
                 &GameWorld::
-                _NV_mainLoop_GPUSensitiveStuff
+                _NV_mainLoop_GPUSensitiveStuff  // 此函数名为原始代码中的名称，保留
             ),
             &GameWorld_mainLoop_hook,
             &GameWorld_mainLoop_orig
@@ -1031,21 +1050,21 @@ void startPlugin()
     if (!mainLoopInstalled)
     {
         LogErrorMessage(
-            "failed to install the game-world monitoring hook."
+            "failed to install the game-world monitoring hook."  // 安装游戏世界监控钩子失败
         );
 
         LogInfo(
-            "loaded without ground deployment."
+            "loaded without ground deployment."  // 已加载但未启用地面部署
         );
 
         return;
     }
 
     LogInfo(
-        "ground deployment monitor installed."
+        "ground deployment monitor installed."  // 地面部署监控已安装
     );
 
     LogInfo(
-        "loaded successfully; ground deployment active."
+        "loaded successfully; ground deployment active."  // 加载成功；地面部署已激活
     );
 }
